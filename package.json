@@ -20,6 +20,13 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsWelcome": [
+    {
+      "view": "npm-commander-main",
+      "contents": "No `package.json` files found in this workspace.\n[Open Folder](command:vscode.openFolder)",
+      "when": "view == npm-commander-main && !npmCommanderHasProjects"
+    }
+  ],
   "viewsContainers": {
     "activitybar": [
       {
@@ -37,20 +44,13 @@
       }
     ]
   },
-  "viewsWelcome": [
-    {
-      "view": "npm-commander-main",
-      "contents": "No `package.json` files found in this workspace.\n[Open Folder](command:vscode.openFolder)",
-      "when": "view == npm-commander-main"
-    }
-  ],
   "commands": [
     { "command": "npm-commander.runNpmScript", "title": "Run", "icon": "$(play)" },
     { "command": "npm-commander.stopScript", "title": "Stop", "icon": "$(debug-stop)" },
     { "command": "npm-commander.focusTerminal", "title": "Focus" },
     { "command": "npm-commander.openPackageJson", "title": "Open package.json", "icon": "$(json)" },
     { "command": "npm-commander.refreshEntry", "title": "Refresh", "icon": "$(refresh)" },
-    { "command": "npm-commander.refreshEntry-loading", "title": "Scanning...", "icon": "$(sync~spin)" }
+    { "command": "npm-commander.refreshEntry-loading", "title": "Scanning...", "icon": "$(refresh~spin)" }
   ],
   "menus": {
     "view/title": [
