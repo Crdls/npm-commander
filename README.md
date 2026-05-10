@@ -27,6 +27,5 @@ The **NPM Commander** panel is located in the Activity Bar.
 - Built on top of the standard VS Code Tasks API.
 - Clean UI: Does not display Git statuses (Untracked/Modified) for tree items.
 
-## License
-
-MIT
+## License: MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

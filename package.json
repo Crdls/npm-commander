@@ -73,7 +73,7 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run package",
+    "package": "vsce package --no-dependencies",
     "lint": "eslint src"
   },
   "devDependencies": {
