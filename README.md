@@ -28,6 +28,13 @@ If you have the `code` binary in your PATH:
 ```bash
 code --install-extension npm-commander-1.0.0.vsix
 ```
+or
+```bash
+ext install Crdls.npm-commander
+```
+
+### VS Code store
+https://marketplace.visualstudio.com/items?itemName=Crdls.npm-commander
 
 ## Usage 🛠
 
