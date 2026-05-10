@@ -20,27 +20,27 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
-        "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "npm-commander-sidebar",
-          "title": "NPM Commander",
-          "icon": "media/nc-logo.svg"
-        }
-      ]
-    },
+  "viewsContainers": {
+    "activitybar": [
+      {
+        "id": "npm-commander-sidebar",
+        "title": "NPM Commander",
+        "icon": "media/nc-logo.svg"
+      }
+    ]
+  },
   "views": {
     "npm-commander-sidebar": [
       {
         "id": "npm-commander-main",
-        "name": "Scripts"
+        "name": "NPM Scripts"
       }
     ]
   },
   "viewsWelcome": [
     {
       "view": "npm-commander-main",
-      "contents": "No `package.json` files found.\n[Open Folder](command:vscode.openFolder)",
+      "contents": "No `package.json` files found in this workspace.\n[Open Folder](command:vscode.openFolder)",
       "when": "view == npm-commander-main"
     }
   ],
@@ -48,14 +48,20 @@
     { "command": "npm-commander.runNpmScript", "title": "Run", "icon": "$(play)" },
     { "command": "npm-commander.stopScript", "title": "Stop", "icon": "$(debug-stop)" },
     { "command": "npm-commander.focusTerminal", "title": "Focus" },
-    { "command": "npm-commander.openPackageJson", "title": "Open File", "icon": "$(go-to-file)" },
-    { "command": "npm-commander.refreshEntry", "title": "Refresh", "icon": "$(refresh)" }
+    { "command": "npm-commander.openPackageJson", "title": "Open package.json", "icon": "$(json)" },
+    { "command": "npm-commander.refreshEntry", "title": "Refresh", "icon": "$(refresh)" },
+    { "command": "npm-commander.refreshEntry-loading", "title": "Scanning...", "icon": "$(sync~spin)" }
   ],
   "menus": {
     "view/title": [
       {
         "command": "npm-commander.refreshEntry",
-        "when": "view == npm-commander-main",
+        "when": "view == npm-commander-main && !npmCommanderScanning",
+        "group": "navigation"
+      },
+      {
+        "command": "npm-commander.refreshEntry-loading",
+        "when": "view == npm-commander-main && npmCommanderScanning",
         "group": "navigation"
       }
     ],
@@ -78,6 +84,7 @@
     ]
   }
 }
+
 ,
   "scripts": {
     "create-package": "vsce package --no-dependencies",
