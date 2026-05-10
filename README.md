@@ -14,6 +14,21 @@ A straightforward sidebar for managing scripts from your `package.json` files. I
     - ✅ **Status icons** for finished tasks (success or error).
     - 🔄 **Status reset** when a task is interrupted by the user (Ctrl+C).
 
+## Installation 📦
+
+### From GitHub Releases (Manual)
+1. Download the latest `.vsix` file from the [Releases](https://github.com/Crdls/npm-commander/releases) page.
+2. Open **VS Code**.
+3. Go to the **Extensions** view (`Ctrl+Shift+X`).
+4. Click the **"..."** (Views and More Actions) in the top right corner.
+5. Select **Install from VSIX...** and choose the downloaded file.
+
+### Via Command Line
+If you have the `code` binary in your PATH:
+```bash
+code --install-extension npm-commander-1.0.0.vsix
+```
+
 ## Usage 🛠
 
 The **NPM Commander** panel is located in the Activity Bar.
