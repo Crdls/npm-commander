@@ -23,8 +23,8 @@
     "viewsWelcome": [
     {
       "view": "npm-commander-main",
-      "contents": "No `package.json` files found in this workspace.\n[Open Folder](command:vscode.openFolder)",
-      "when": "view == npm-commander-main && !npmCommanderHasProjects"
+      "contents": "Initializing extension....",
+      "when": "view == npm-commander-main"
     }
   ],
   "viewsContainers": {
