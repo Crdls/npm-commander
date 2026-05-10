@@ -1,4 +1,4 @@
-# NPM Commander 🚀
+# NPM Commander for VS Code
 
 A straightforward sidebar for managing scripts from your `package.json` files. It provides a visual list of available commands and simplifies switching between their respective terminals.
 
