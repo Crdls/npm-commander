@@ -4,10 +4,10 @@ import * as path from 'path';
 export function activate(context: vscode.ExtensionContext) {
     const provider = new PackageJsonProvider();
     
-    // Create TreeView to handle UI interactions and messages
+    // Create the TreeView immediately
     const treeView = vscode.window.createTreeView('npm-commander-main', {
         treeDataProvider: provider,
-        showCollapseAll: true
+        showCollapseAll: false
     });
 
     const activeExecutions = new Map<string, vscode.TaskExecution>();
@@ -18,13 +18,16 @@ export function activate(context: vscode.ExtensionContext) {
      * Helper to perform workspace scan with header spinner toggle
      */
     async function performRefresh() {
-        // Toggle custom context to show/hide spinning refresh icon in header
+        // Show spinner icon via custom context in package.json
         vscode.commands.executeCommand('setContext', 'npmCommanderScanning', true);
+        
         await provider.refresh();
+        
+        // Hide spinner icon
         vscode.commands.executeCommand('setContext', 'npmCommanderScanning', false);
     }
 
-    // Bind terminal to script name when a task starts
+    // Capture terminal when a task starts for precise focusing
     const taskStartWatcher = vscode.tasks.onDidStartTask(e => {
         const scriptName = e.execution.task.name;
         const terminal = vscode.window.terminals.find(t => 
@@ -35,17 +38,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // COMMAND: Manual scan for package.json files
+    // COMMAND: Manual refresh
     const refreshCommand = vscode.commands.registerCommand('npm-commander.refreshEntry', () => {
         performRefresh();
     });
 
-    // COMMAND: Visual stub for scanning state
-    const loadingCommand = vscode.commands.registerCommand('npm-commander.refreshEntry-loading', () => {
-        vscode.window.setStatusBarMessage("Scanning projects...", 2000);
-    });
-
-    // COMMAND: Run script using Task API
+    // COMMAND: Run script
     const runCommand = vscode.commands.registerCommand('npm-commander.runNpmScript', async (item: PackageItem) => {
         const uri = item.scriptUri;
         if (!item || !uri) {return;}
@@ -53,7 +51,6 @@ export function activate(context: vscode.ExtensionContext) {
         const folder = path.dirname(uri.fsPath);
         const termName = item.label;
 
-        // Focus existing terminal if it was already created
         const existing = scriptTerminals.get(termName) || vscode.window.terminals.find(t => t.name === termName);
         if (existing) {
             existing.show(false);
@@ -74,7 +71,6 @@ export function activate(context: vscode.ExtensionContext) {
             close: false
         };
 
-        // Set UI state to running and save it to provider's cache
         item.setRunning();
         provider.saveStatusToCache(item);
         provider.refresh(item);
@@ -83,31 +79,29 @@ export function activate(context: vscode.ExtensionContext) {
         activeExecutions.set(item.label, execution);
     });
 
-    // COMMAND: Focus terminal tab without restarting
+    // COMMAND: Focus terminal tab
     const focusCommand = vscode.commands.registerCommand('npm-commander.focusTerminal', (item: PackageItem) => {
-        if (!item) {return;}
+        if (!item || item.contextValue === 'info') {return;}
         const terminal = scriptTerminals.get(item.label) || vscode.window.terminals.find(t => t.name === item.label);
         if (terminal) {
             terminal.show(false);
-        } else {
-            vscode.window.setStatusBarMessage(`Script "${item.label}" is not running`, 3000);
         }
     });
 
-    // COMMAND: Open package.json in the editor
+    // COMMAND: Open package.json
     const openPackageCommand = vscode.commands.registerCommand('npm-commander.openPackageJson', (item: PackageItem) => {
         if (item && item.scriptUri) {
             vscode.window.showTextDocument(item.scriptUri);
         }
     });
 
-    // COMMAND: Gracefully stop script (Sends Ctrl+C)
+    // COMMAND: Stop script (Ctrl+C)
     const stopCommand = vscode.commands.registerCommand('npm-commander.stopScript', (item: PackageItem) => {
         manuallyStopped.add(item.label);
         const terminal = scriptTerminals.get(item.label) || vscode.window.terminals.find(t => t.name === item.label);
         
         if (terminal) {
-            terminal.sendText('\u0003'); // SIGINT
+            terminal.sendText('\u0003'); 
             terminal.show(false);
         }
 
@@ -117,12 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
         provider.refresh(item);
     });
 
-    // COMMAND: Clear all status icons
-    const clearAllCommand = vscode.commands.registerCommand('npm-commander.clearAllStatuses', () => {
-        provider.clearStatusCache();
-    });
-
-    // Global task lifecycle watcher
+    // Watch for task completion
     const taskEndWatcher = vscode.tasks.onDidEndTaskProcess(e => {
         const scriptName = e.execution.task.name;
         const exitCode = e.exitCode;
@@ -137,7 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
         activeExecutions.delete(scriptName);
     });
 
-    // Handle manual terminal closure
+    // Clean up when terminal is closed
     const terminalCloseWatcher = vscode.window.onDidCloseTerminal(terminal => {
         for (const [name, term] of scriptTerminals.entries()) {
             if (term === terminal) {
@@ -148,19 +137,17 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Initial scan
+    // Trigger initial scan
     performRefresh();
 
     context.subscriptions.push(
         treeView,
         taskStartWatcher, 
         refreshCommand, 
-        loadingCommand,
         runCommand, 
         focusCommand, 
         openPackageCommand, 
         stopCommand, 
-        clearAllCommand,
         taskEndWatcher, 
         terminalCloseWatcher
     );
@@ -170,22 +157,13 @@ export function activate(context: vscode.ExtensionContext) {
 export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<PackageItem | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-    
     private items: PackageItem[] = [];
-    
-    /**
-     * Cache for script statuses to persist during TreeView refreshes.
-     * Key: "filePath|scriptLabel"
-     */
     private statusCache = new Map<string, { context: string, icon: vscode.ThemeIcon | undefined }>();
 
     async refresh(item?: PackageItem): Promise<void> { 
         this._onDidChangeTreeData.fire(item); 
     }
 
-    /**
-     * Updates and caches the status of a specific item
-     */
     updateStatus(label: string, exitCode: number | undefined, isManual: boolean) {
         const item = this.items.find(i => i.label === label);
         if (item) {
@@ -196,17 +174,9 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
     }
 
     saveStatusToCache(item: PackageItem) {
+        if (item.contextValue === 'info') {return;}
         const key = `${item.scriptUri?.fsPath}|${item.label}`;
-        this.statusCache.set(key, {
-            context: item.contextValue,
-            icon: item.iconPath as vscode.ThemeIcon
-        });
-    }
-
-    clearStatusCache() {
-        this.statusCache.clear();
-        this.items.forEach(i => i.resetStatus());
-        this.refresh();
+        this.statusCache.set(key, { context: item.contextValue, icon: item.iconPath as vscode.ThemeIcon });
     }
 
     getTreeItem(element: PackageItem): vscode.TreeItem { return element; }
@@ -215,6 +185,15 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
         if (!element) {
             this.items = [];
             const files = await vscode.workspace.findFiles('**/package.json', '**/node_modules/**');
+            
+            if (files.length === 0) {
+                return [new PackageItem(
+                    "No projects found", 
+                    vscode.TreeItemCollapsibleState.None, 
+                    "info"
+                )];
+            }
+
             const result = await Promise.all(files.map(async (uri) => {
                 try {
                     const doc = await vscode.workspace.openTextDocument(uri);
@@ -230,21 +209,13 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
             const doc = await vscode.workspace.openTextDocument(element.scriptUri);
             const content = JSON.parse(doc.getText());
             const scripts = content.scripts || {};
-            
             const scriptItems = Object.keys(scripts).map(label => {
                 const item = new PackageItem(label, vscode.TreeItemCollapsibleState.None, 'script', element.scriptUri, scripts[label]);
-                
-                // Restore status from cache if exists
                 const key = `${element.scriptUri?.fsPath}|${label}`;
                 const cached = this.statusCache.get(key);
-                if (cached) {
-                    item.contextValue = cached.context;
-                    item.iconPath = cached.icon;
-                }
-                
+                if (cached) { item.contextValue = cached.context; item.iconPath = cached.icon; }
                 return item;
             });
-
             this.items.push(...scriptItems);
             return scriptItems;
         }
@@ -268,13 +239,17 @@ export class PackageItem extends vscode.TreeItem {
         
         if (this.contextValue === 'package') {
             this.iconPath = new vscode.ThemeIcon('package');
+        } else if (this.contextValue === 'info') {
+            // Appearance for the "No projects found" message
+            this.iconPath = new vscode.ThemeIcon('info');
+            this.description = "open a folder with package.json";
         } else {
             this.resetStatus();
         }
     }
 
     resetStatus() {
-        if (this.contextValue !== 'package') {
+        if (this.contextValue === 'script' || this.contextValue === 'script-running') {
             this.contextValue = 'script';
             this.iconPath = new vscode.ThemeIcon('code');
             this.description = this.scriptValue;
