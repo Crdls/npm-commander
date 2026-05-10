@@ -15,10 +15,12 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:npm-commander-main"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
-    "viewsContainers": {
+        "viewsContainers": {
       "activitybar": [
         {
           "id": "npm-commander-sidebar",
@@ -27,58 +29,70 @@
         }
       ]
     },
-    "views": {
-      "npm-commander-sidebar": [
-        {
-          "id": "npm-commander-main",
-          "name": "NPM Scripts"
-        }
-      ]
-    },
-    "commands": [
+  "views": {
+    "npm-commander-sidebar": [
       {
-        "command": "npm-commander.openPackageJson",
-        "title": "Open package.json",
-        "icon": "$(json)"
-      },
+        "id": "npm-commander-main",
+        "name": "Scripts"
+      }
+    ]
+  },
+  "viewsWelcome": [
+    {
+      "view": "npm-commander-main",
+      "contents": "No `package.json` files found.\n[Open Folder](command:vscode.openFolder)",
+      "when": "view == npm-commander-main"
+    }
+  ],
+  "commands": [
+    { "command": "npm-commander.runNpmScript", "title": "Run", "icon": "$(play)" },
+    { "command": "npm-commander.stopScript", "title": "Stop", "icon": "$(debug-stop)" },
+    { "command": "npm-commander.focusTerminal", "title": "Focus" },
+    { "command": "npm-commander.openPackageJson", "title": "Open File", "icon": "$(go-to-file)" },
+    { "command": "npm-commander.refreshEntry", "title": "Refresh", "icon": "$(refresh)" }
+  ],
+  "menus": {
+    "view/title": [
+      {
+        "command": "npm-commander.refreshEntry",
+        "when": "view == npm-commander-main",
+        "group": "navigation"
+      }
+    ],
+    "view/item/context": [
       {
         "command": "npm-commander.runNpmScript",
-        "title": "Run",
-        "icon": "$(play)"
+        "when": "view == npm-commander-main && viewItem == script",
+        "group": "inline"
       },
       {
         "command": "npm-commander.stopScript",
-        "title": "Stop",
-        "icon": "$(debug-stop)"
+        "when": "view == npm-commander-main && viewItem == script-running",
+        "group": "inline"
       },
       {
-        "command": "npm-commander.focusTerminal",
-        "title": "Focus Terminal"
+        "command": "npm-commander.openPackageJson",
+        "when": "view == npm-commander-main && viewItem == package",
+        "group": "inline"
       }
-    ],
-    "menus": {
-      "view/item/context": [
-        {
-          "command": "npm-commander.openPackageJson",
-          "when": "view == npm-commander-main && viewItem == package",
-          "group": "inline"
-        },
-        {
-          "command": "npm-commander.runNpmScript",
-          "when": "view == npm-commander-main && viewItem == script",
-          "group": "inline"
-        },
-        {
-          "command": "npm-commander.stopScript",
-          "when": "view == npm-commander-main && viewItem == script-running",
-          "group": "inline"
-        }
-      ]
-    }
-  },
+    ]
+  }
+}
+,
   "scripts": {
-    "package": "vsce package --no-dependencies",
-    "lint": "eslint src"
+    "create-package": "vsce package --no-dependencies",
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

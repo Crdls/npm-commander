@@ -1,15 +1,23 @@
 import * as vscode from 'vscode';
-import * as path from 'path'; 
+import * as path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
     const provider = new PackageJsonProvider();
-    vscode.window.registerTreeDataProvider('npm-commander-main', provider);
+    
+    // Create the TreeView to access UI properties like .message
+    const treeView = vscode.window.createTreeView('npm-commander-main', {
+        treeDataProvider: provider,
+        showCollapseAll: true
+    });
 
     const activeExecutions = new Map<string, vscode.TaskExecution>();
     const scriptTerminals = new Map<string, vscode.Terminal>();
     const manuallyStopped = new Set<string>();
 
-    // Привязка терминала к скрипту при старте задачи
+    // Initial status message
+    treeView.message = "Initializing...";
+
+    // Bind terminal to script when a task starts
     const taskStartWatcher = vscode.tasks.onDidStartTask(e => {
         const scriptName = e.execution.task.name;
         const terminal = vscode.window.terminals.find(t => 
@@ -20,8 +28,16 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // COMMAND: Refresh the tree manually
+    const refreshCommand = vscode.commands.registerCommand('npm-commander.refreshEntry', async () => {
+        treeView.message = "Scanning workspace...";
+        await provider.refresh();
+        treeView.message = ""; // Clear message after scan
+    });
+
+    // COMMAND: Run script
     const runCommand = vscode.commands.registerCommand('npm-commander.runNpmScript', async (item: PackageItem) => {
-        const uri = item.scriptUri || item.resourceUri;
+        const uri = item.scriptUri;
         if (!item || !uri) {return;}
 
         const folder = path.dirname(uri.fsPath);
@@ -54,16 +70,25 @@ export function activate(context: vscode.ExtensionContext) {
         activeExecutions.set(item.label, execution);
     });
 
+    // COMMAND: Focus terminal tab
     const focusCommand = vscode.commands.registerCommand('npm-commander.focusTerminal', (item: PackageItem) => {
         if (!item) {return;}
         const terminal = scriptTerminals.get(item.label) || vscode.window.terminals.find(t => t.name === item.label);
         if (terminal) {
             terminal.show(false);
         } else {
-            vscode.window.setStatusBarMessage(`Скрипт "${item.label}" еще не запущен`, 3000);
+            vscode.window.setStatusBarMessage(`Script "${item.label}" is not running`, 3000);
         }
     });
 
+    // COMMAND: Open package.json in editor
+    const openPackageCommand = vscode.commands.registerCommand('npm-commander.openPackageJson', (item: PackageItem) => {
+        if (item && item.scriptUri) {
+            vscode.window.showTextDocument(item.scriptUri);
+        }
+    });
+
+    // COMMAND: Stop script (Ctrl+C)
     const stopCommand = vscode.commands.registerCommand('npm-commander.stopScript', (item: PackageItem) => {
         manuallyStopped.add(item.label);
         const terminal = scriptTerminals.get(item.label) || vscode.window.terminals.find(t => t.name === item.label);
@@ -78,6 +103,7 @@ export function activate(context: vscode.ExtensionContext) {
         provider.refresh(item);
     });
 
+    // Watch for task completion (success/error/interruption)
     const taskEndWatcher = vscode.tasks.onDidEndTaskProcess(e => {
         const scriptName = e.execution.task.name;
         const exitCode = e.exitCode;
@@ -92,24 +118,42 @@ export function activate(context: vscode.ExtensionContext) {
         activeExecutions.delete(scriptName);
     });
 
-    const openPackageCommand = vscode.commands.registerCommand('npm-commander.openPackageJson', (item: PackageItem) => {
-        const uri = item.scriptUri;
-        if (uri) {
-            vscode.window.showTextDocument(uri);
+    // Clear status when terminal is closed manually
+    const terminalCloseWatcher = vscode.window.onDidCloseTerminal(terminal => {
+        for (const [name, term] of scriptTerminals.entries()) {
+            if (term === terminal) {
+                scriptTerminals.delete(name);
+                provider.updateStatus(name, undefined, true);
+                break;
+            }
         }
     });
 
+    // Initial scan message cleanup
+    setTimeout(() => { treeView.message = ""; }, 2000);
+
     context.subscriptions.push(
-        taskStartWatcher, runCommand, focusCommand, stopCommand, taskEndWatcher, openPackageCommand
+        treeView,
+        taskStartWatcher, 
+        refreshCommand, 
+        runCommand, 
+        focusCommand, 
+        openPackageCommand, 
+        stopCommand, 
+        taskEndWatcher, 
+        terminalCloseWatcher
     );
 }
 
+// --- TREE DATA PROVIDER ---
 export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<PackageItem | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
     private items: PackageItem[] = [];
 
-    refresh(item?: PackageItem): void { this._onDidChangeTreeData.fire(item); }
+    async refresh(item?: PackageItem): Promise<void> { 
+        this._onDidChangeTreeData.fire(item); 
+    }
 
     updateStatus(label: string, exitCode: number | undefined, isManual: boolean) {
         const item = this.items.find(i => i.label === label);
@@ -130,7 +174,6 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
                     const doc = await vscode.workspace.openTextDocument(uri);
                     const content = JSON.parse(doc.getText());
                     if (!content.scripts || Object.keys(content.scripts).length === 0) {return null;}
-                    // Для папок убираем resourceUri, чтобы не было "U" рядом с названием проекта
                     return new PackageItem(path.basename(path.dirname(uri.fsPath)) || 'root', vscode.TreeItemCollapsibleState.Expanded, 'package', uri);
                 } catch { return null; }
             }));
@@ -151,6 +194,7 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
     }
 }
 
+// --- TREE ITEM CLASS ---
 export class PackageItem extends vscode.TreeItem {
     public readonly scriptUri?: vscode.Uri;
 
@@ -165,9 +209,7 @@ export class PackageItem extends vscode.TreeItem {
         this.scriptUri = _uri;
         
         if (this.contextValue === 'package') {
-            this.scriptUri = _uri;
             this.iconPath = new vscode.ThemeIcon('package');
-            this.command = undefined; 
         } else {
             this.resetStatus();
         }
@@ -185,7 +227,7 @@ export class PackageItem extends vscode.TreeItem {
     setRunning() {
         this.contextValue = 'script-running';
         this.iconPath = new vscode.ThemeIcon('sync~spin');
-    } 
+    }
 
     setFinished(exitCode: number | undefined) {
         this.contextValue = 'script';
