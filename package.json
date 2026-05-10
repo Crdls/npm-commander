@@ -2,10 +2,12 @@
   "name": "npm-commander",
   "displayName": "npm-commander",
   "description": "",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.118.0"
   },
+  "license": "MIT",
+  "publisher": "Crdls",
   "categories": [
     "Other"
   ],
@@ -13,67 +15,77 @@
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
-    "activitybar": [
+      "activitybar": [
+        {
+          "id": "npm-commander-sidebar",
+          "title": "NPM Commander",
+          "icon": "media/nc-logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "npm-commander-sidebar": [
+        {
+          "id": "npm-commander-main",
+          "name": "NPM Scripts"
+        }
+      ]
+    },
+    "commands": [
       {
-        "id": "npm-commander-sidebar",
-        "title": "NPM Commander",
-        "icon": "media/npm.svg"
-      }
-    ]
-  },
-  "views": {
-    "npm-commander-sidebar": [
-      {
-        "id": "npm-commander-main",
-        "name": "NPM Scripts"
-      }
-    ]
-  },
-  "commands": [
-    { "command": "npm-commander.runNpmScript", "title": "Run", "icon": "$(play)" },
-    { "command": "npm-commander.stopScript", "title": "Stop", "icon": "$(debug-stop)" },
-    { "command": "npm-commander.focusTerminal", "title": "Focus Terminal" }
-  ],
-  "menus": {
-    "view/item/context": [
+        "command": "npm-commander.openPackageJson",
+        "title": "Open package.json",
+        "icon": "$(json)"
+      },
       {
         "command": "npm-commander.runNpmScript",
-        "when": "view == npm-commander-main && viewItem == script",
-        "group": "inline" 
+        "title": "Run",
+        "icon": "$(play)"
       },
       {
         "command": "npm-commander.stopScript",
-        "when": "view == npm-commander-main && viewItem == script-running",
-        "group": "inline"
+        "title": "Stop",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "npm-commander.focusTerminal",
+        "title": "Focus Terminal"
       }
-    ]
-  }
-}
-,
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "npm-commander.openPackageJson",
+          "when": "view == npm-commander-main && viewItem == package",
+          "group": "inline"
+        },
+        {
+          "command": "npm-commander.runNpmScript",
+          "when": "view == npm-commander-main && viewItem == script",
+          "group": "inline"
+        },
+        {
+          "command": "npm-commander.stopScript",
+          "when": "view == npm-commander-main && viewItem == script-running",
+          "group": "inline"
+        }
+      ]
+    }
+  },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
-    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "lint": "eslint src"
   },
   "devDependencies": {
-    "@types/vscode": "^1.118.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.56.1",
-    "eslint": "^9.39.3",
+    "@types/node": "~22.19.18",
+    "@types/vscode": "^1.118.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.3",
+    "eslint": "^9.39.3",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.56.1"
   }
 }
