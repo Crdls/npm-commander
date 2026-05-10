@@ -5,69 +5,116 @@ export function activate(context: vscode.ExtensionContext) {
     const provider = new PackageJsonProvider();
     vscode.window.registerTreeDataProvider('npm-commander-main', provider);
 
-    // 1. Команда ЗАПУСКА
-    const runCommand = vscode.commands.registerCommand('npm-commander.runNpmScript', (item: PackageItem) => {
-        if (!item || !item.resourceUri) return;
+    const activeExecutions = new Map<string, vscode.TaskExecution>();
+    const manuallyStopped = new Set<string>();
 
-        const termName = `npm: ${item.label}`;
-        const folder = path.dirname(item.resourceUri.fsPath);
+    // 1. Команда ЗАПУСКА (с исправленной фокусировкой)
+const runCommand = vscode.commands.registerCommand('npm-commander.runNpmScript', async (item: PackageItem) => {
+    if (!item || !item.resourceUri) return;
 
-        // Ищем существующий терминал или создаем новый
-        let terminal = vscode.window.terminals.find(t => t.name === termName);
-        if (!terminal) {
-            terminal = vscode.window.createTerminal({ name: termName, cwd: folder });
-        }
+    const termName = `npm: ${item.label}`;
+    
+    // Сначала ищем и показываем, если он есть
+    const existingTerminal = vscode.window.terminals.find(t => t.name === termName);
+    if (existingTerminal) {
+        existingTerminal.show(false); // false позволяет забрать фокус себе
+    }
 
-        terminal.show();
-        terminal.sendText(`npm run ${item.label}`);
+    const folder = path.dirname(item.resourceUri.fsPath);
+    const task = new vscode.Task(
+        { type: 'npm', script: item.label },
+        vscode.TaskScope.Workspace,
+        item.label,
+        'npm',
+        new vscode.ShellExecution(`npm run ${item.label}`, { cwd: folder })
+    );
 
-        // Меняем состояние на "запущено", чтобы показать кнопку STOP
-        item.setRunning(true);
-        provider.refresh(item);
-    });
+    item.setRunning();
+    provider.refresh(item);
 
-    // 2. Команда ОСТАНОВКИ
+    const execution = await vscode.tasks.executeTask(task);
+    activeExecutions.set(item.label, execution);
+});
+
+// 2. Команда ФОКУСИРОВКИ (улучшенный поиск)
+const focusCommand = vscode.commands.registerCommand('npm-commander.focusTerminal', (item: PackageItem) => {
+    if (!item) return;
+    
+    const termName = `npm: ${item.label}`;
+    
+    // Ищем терминал, имя которого СОДЕРЖИТ название скрипта 
+    // (иногда задачи именуются "Task: npm: dev")
+    const terminal = vscode.window.terminals.find(t => 
+        t.name === termName || t.name.endsWith(`: ${item.label}`)
+    );
+    
+    if (terminal) {
+        terminal.show(false); // false принудительно переносит фокус в терминал
+    } else {
+        vscode.window.setStatusBarMessage(`Скрипт "${item.label}" не запущен`, 3000);
+    }
+});
+
+
+
+    // 3. Команда ОСТАНОВКИ
     const stopCommand = vscode.commands.registerCommand('npm-commander.stopScript', (item: PackageItem) => {
-        if (!item) return;
-
-        const termName = `npm: ${item.label}`;
-        const terminal = vscode.window.terminals.find(t => t.name === termName);
-        
-        if (terminal) {
-            // В VS Code нельзя программно послать Ctrl+C, но можно закрыть терминал
-            terminal.dispose(); 
+        const execution = activeExecutions.get(item.label);
+        if (execution) {
+            manuallyStopped.add(item.label);
+            execution.terminate();
+            activeExecutions.delete(item.label);
         }
-
-        item.setRunning(false);
-        provider.refresh(item);
     });
 
-    // Обработка закрытия терминала пользователем вручную
-    const terminalWatcher = vscode.window.onDidCloseTerminal(terminal => {
-        // При желании здесь можно найти нужный item и вызвать setRunning(false), 
-        // но для простоты мы сбросим всё дерево или обновим его
-        provider.refresh();
+    // 4. СЛЕЖКА ЗА ЗАВЕРШЕНИЕМ
+    const taskEndWatcher = vscode.tasks.onDidEndTaskProcess(e => {
+        const scriptName = e.execution.task.name;
+        const exitCode = e.exitCode;
+
+        const isInterrupted = 
+            exitCode === undefined || 
+            exitCode === 130 || 
+            exitCode === -1073741510 || 
+            exitCode === 3221225786;
+
+        if (manuallyStopped.has(scriptName) || isInterrupted) {
+            provider.updateStatus(scriptName, undefined, true);
+            manuallyStopped.delete(scriptName);
+        } else {
+            provider.updateStatus(scriptName, exitCode, false);
+        }
+        activeExecutions.delete(scriptName);
     });
 
-    context.subscriptions.push(runCommand, stopCommand, terminalWatcher);
+    context.subscriptions.push(runCommand, focusCommand, stopCommand, taskEndWatcher);
 }
 
 // --- ПРОВАЙДЕР ДАННЫХ ---
 export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<PackageItem | undefined | null | void> = new vscode.EventEmitter<PackageItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<PackageItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData = new vscode.EventEmitter<PackageItem | undefined | null | void>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private items: PackageItem[] = [];
 
-    // Метод для принудительного обновления дерева
     refresh(item?: PackageItem): void {
         this._onDidChangeTreeData.fire(item);
+    }
+
+    updateStatus(label: string, exitCode: number | undefined, isManual: boolean) {
+        const item = this.items.find(i => i.label === label);
+        if (item) {
+            isManual ? item.resetStatus() : item.setFinished(exitCode);
+            this.refresh(item);
+        }
     }
 
     getTreeItem(element: PackageItem): vscode.TreeItem { return element; }
 
     async getChildren(element?: PackageItem): Promise<PackageItem[]> {
         if (!element) {
+            this.items = [];
             const files = await vscode.workspace.findFiles('**/package.json', '**/node_modules/**');
-            const items = await Promise.all(files.map(async (uri) => {
+            const result = await Promise.all(files.map(async (uri) => {
                 try {
                     const doc = await vscode.workspace.openTextDocument(uri);
                     const content = JSON.parse(doc.getText());
@@ -75,14 +122,18 @@ export class PackageJsonProvider implements vscode.TreeDataProvider<PackageItem>
                     return new PackageItem(path.basename(path.dirname(uri.fsPath)) || 'root', vscode.TreeItemCollapsibleState.Expanded, 'package', uri);
                 } catch { return null; }
             }));
-            return items.filter((item): item is PackageItem => item !== null);
+            return result.filter((item): item is PackageItem => item !== null);
         }
 
         if (element.contextValue === 'package' && element.resourceUri) {
             const doc = await vscode.workspace.openTextDocument(element.resourceUri);
             const content = JSON.parse(doc.getText());
             const scripts = content.scripts || {};
-            return Object.keys(scripts).map(label => new PackageItem(label, vscode.TreeItemCollapsibleState.None, 'script', element.resourceUri, scripts[label]));
+            const scriptItems = Object.keys(scripts).map(label => 
+                new PackageItem(label, vscode.TreeItemCollapsibleState.None, 'script', element.resourceUri, scripts[label])
+            );
+            this.items.push(...scriptItems);
+            return scriptItems;
         }
         return [];
     }
@@ -93,20 +144,41 @@ export class PackageItem extends vscode.TreeItem {
     constructor(
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public contextValue: string, // Убрали readonly, чтобы менять на лету
+        public contextValue: string,
         public readonly resourceUri?: vscode.Uri,
         public readonly scriptValue?: string
     ) {
         super(label, collapsibleState);
-        this.iconPath = contextValue === 'package' ? new vscode.ThemeIcon('package') : new vscode.ThemeIcon('code');
-        this.description = this.scriptValue;
+        this.resetStatus();
     }
 
-    // Метод переключения контекста для package.json (when clauses)
-    setRunning(isRunning: boolean) {
+    resetStatus() {
         if (this.contextValue !== 'package') {
-            this.contextValue = isRunning ? 'script-running' : 'script';
-            this.iconPath = isRunning ? new vscode.ThemeIcon('sync~spin') : new vscode.ThemeIcon('code');
+            this.contextValue = 'script';
+            this.iconPath = new vscode.ThemeIcon('code');
+            this.description = this.scriptValue;
+            // Назначаем команду фокусировки на основной клик
+            this.command = {
+                command: 'npm-commander.focusTerminal',
+                title: 'Focus Terminal',
+                arguments: [this]
+            };
+        } else {
+            this.iconPath = new vscode.ThemeIcon('package');
+        }
+    }
+
+    setRunning() {
+        this.contextValue = 'script-running';
+        this.iconPath = new vscode.ThemeIcon('sync~spin');
+    }
+
+    setFinished(exitCode: number | undefined) {
+        this.contextValue = 'script';
+        if (exitCode === 0) {
+            this.iconPath = new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'));
+        } else {
+            this.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('testing.iconErrored'));
         }
     }
 }

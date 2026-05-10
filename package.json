@@ -30,16 +30,9 @@
     ]
   },
   "commands": [
-    {
-      "command": "npm-commander.runNpmScript",
-      "title": "Run",
-      "icon": "$(play)"
-    },
-    {
-      "command": "npm-commander.stopScript",
-      "title": "Stop",
-      "icon": "$(debug-stop)"
-    }
+    { "command": "npm-commander.runNpmScript", "title": "Run", "icon": "$(play)" },
+    { "command": "npm-commander.stopScript", "title": "Stop", "icon": "$(debug-stop)" },
+    { "command": "npm-commander.focusTerminal", "title": "Focus Terminal" }
   ],
   "menus": {
     "view/item/context": [
